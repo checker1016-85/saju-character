@@ -54,7 +54,7 @@ h1{font-size:20px;font-weight:900;text-align:center;background:linear-gradient(9
 
 <script>
 // ================================================================
-// 오행 매핑 (고정 — DB 변경 불필요)
+// 오행 매핑 (고정)
 // ================================================================
 const OH_MAP={甲:'목',乙:'목',丙:'화',丁:'화',戊:'토',己:'토',庚:'금',辛:'금',壬:'수',癸:'수'};
 const YY_MAP={甲:'양',乙:'음',丙:'양',丁:'음',戊:'양',己:'음',庚:'양',辛:'음',壬:'양',癸:'음'};
@@ -65,11 +65,13 @@ const IL=["甲子","乙丑","丙寅","丁卯","戊辰","己巳","庚午","辛未
 const YK={'子丑':'토','丑子':'토','寅亥':'목','亥寅':'목','卯戌':'화','戌卯':'화','辰酉':'금','酉辰':'금','巳申':'수','申巳':'수','午未':'토','未午':'토'};
 const CG=new Set(['子午','午子','丑未','未丑','寅申','申寅','卯酉','酉卯','辰戌','戌辰','巳亥','亥巳']);
 const WJ_JI=['寅','卯','辰','巳','午','未','申','酉','戌','亥','子','丑'];
+const SEASON_MAP={寅:'봄',卯:'봄',辰:'봄(환절기)',巳:'여름',午:'여름',未:'여름(환절기)',申:'가을',酉:'가을',戌:'가을(환절기)',亥:'겨울',子:'겨울',丑:'겨울(환절기)'};
+const SEASON_MOOD={寅:'생기·녹색·아침빛',卯:'발랄·연두·봄볕',辰:'흐림·황녹·환절기안개',巳:'화사·적색·정오빛',午:'강렬·주홍·한낮',未:'무더위·황적·습한공기',申:'서늘·금색·석양',酉:'차가움·은백·달빛시작',戌:'쓸쓸·갈색·저녁놀',亥:'깊이·남색·한밤',子:'은밀·흑청·자정',丑:'인내·무광·새벽안개'};
 
 function cr(a,b){const p=a+b;if(YK[p])return{t:'육합',d:a+b+'합'+YK[p],pk:'조화롭고 안정된 에너지.'};if(CG.has(p))return{t:'충',d:a+b+'충',pk:'내면의 긴장. 충돌하는 이중 에너지.'};return{t:'',d:'',pk:''};}
 
 // ================================================================
-// 데이터 로드 + 앱 초기화
+// 데이터 로드
 // ================================================================
 let DB = null;
 let S = {ilju:null, g:'남', w:null};
@@ -79,7 +81,7 @@ async function init() {
     const res = await fetch('saju_db.json');
     if (!res.ok) throw new Error('파일 없음');
     DB = await res.json();
-    console.log('DB 로드 완료:', DB.ilju.length, '일주');
+    console.log('DB 로드 완료:', Object.keys(DB.dna).length, '일주 DNA');
     renderApp();
   } catch(e) {
     document.getElementById('app').innerHTML = `
@@ -87,77 +89,231 @@ async function init() {
         ❌ saju_db.json 파일을 불러올 수 없습니다.<br><br>
         <span style="font-size:12px;color:#888">
         이 HTML과 같은 폴더에 saju_db.json이 있어야 합니다.<br>
+        excel_to_json.py로 DB를 먼저 변환하세요.<br>
         로컬에서 열려면 Live Server가 필요합니다. (GitHub Pages에서는 자동 작동)
         </span>
       </div>`;
   }
 }
 
-// 일주 데이터 찾기
-function getIlju(name) {
-  return DB.ilju.find(d => d['일주'] === name) || {};
+// ================================================================
+// DB 헬퍼 — DNA 데이터 가져오기 (공통 + 성별 병합)
+// ================================================================
+function getDNA(ilju, gender) {
+  const d = DB.dna[ilju];
+  if (!d) return {};
+  const com = d.common || {};
+  const gen = gender === '남' ? (d.male || {}) : (d.female || {});
+  // 성별 데이터가 있으면 성별 우선, 없으면 공통 폴백
+  const merged = {...com};
+  for (const k in gen) {
+    if (gen[k]) merged[k] = gen[k];
+  }
+  return merged;
 }
-function getWolji(monthStr) {
-  return DB.wolji.find(d => d['월주(월간·월지)'] && d['월주(월간·월지)'].includes(monthStr)) || {};
+
+// 공통 DNA만
+function getDNACommon(ilju) {
+  return (DB.dna[ilju] || {}).common || {};
+}
+
+// 성별 DNA만 (오버라이드용)
+function getDNAGender(ilju, gender) {
+  const d = DB.dna[ilju];
+  if (!d) return {};
+  return gender === '남' ? (d.male || {}) : (d.female || {});
+}
+
+// 천간별 성별 특성 (시트10)
+function getGenderTraits(ch, gender) {
+  return DB.gender_traits[ch + '_' + gender] || {};
+}
+
+// 일주 고유 특성 (시트11)
+function getIljuUnique(ilju) {
+  return DB.ilju_unique[ilju] || {};
 }
 
 // ================================================================
-// 프롬프트 생성 (DB에서 읽어서 조합)
+// 프롬프트 생성 — 웹 AI용 (설명형)
 // ================================================================
 function genWebAI(il, g, w) {
-  const d = getIlju(il);
   const ch = il[0], ji = il[1];
   const oh = OH_MAP[ch], yy = YY_MAP[ch];
-  const gkr = g==='남' ? '남성' : '여성';
-  const gk = g==='남' ? '남성' : '여성';
+  const gkr = g === '남' ? '남성' : '여성';
+
+  // DNA 데이터 (공통 + 성별 병합)
+  const dna = getDNA(il, g);
+  const dnaG = getDNAGender(il, g);
+  const dnaC = getDNACommon(il);
+  const gt = getGenderTraits(ch, g === '남' ? '남' : '녀');
+  const iu = getIljuUnique(il);
 
   let t = `아래 설정을 기반으로 **일본 소년만화 스타일**(나루토, 주술회전 화풍)의 캐릭터 일러스트를 그려주세요.\n\n`;
+
+  // ─── 기본 정보 ───
   t += `■ 기본 정보\n`;
-  t += `- 일주: ${il} (${KR_CH[ch]}${KR_JI[ji]}) | 오행: ${oh} | 음양: ${yy}\n`;
+  t += `- 일주: ${il} (${KR_CH[ch]}${KR_JI[ji]}) | 오행: ${oh}(${yy}) | 12운성: ${iu['십이운성']||''} | 일지십성: ${iu['일지십성']||''}\n`;
   t += `- 성별: ${gkr}\n`;
+  if (iu['납음']) t += `- 납음: ${iu['납음']} — ${iu['납음해석']||''}\n`;
 
   if (w) {
-    const wjData = getWolji(w);
+    const season = SEASON_MAP[w] || '';
+    const mood = SEASON_MOOD[w] || '';
     const r = cr(ji, w);
-    if (wjData['월주(월간·월지)']) {
-      t += `- 월지: ${wjData['월주(월간·월지)']} (${wjData['계절']||''})\n`;
-      if (r.t) t += `  → ${r.t}: ${r.pk}\n`;
+    t += `- 월지: ${KR_JI[w]}(${w}) | 계절: ${season} | 분위기: ${mood}\n`;
+    if (r.t) t += `  → 일지·월지 관계: ${r.d} — ${r.pk}\n`;
+  }
+
+  // ─── 성격·기질 (설명형) ───
+  t += `\n■ 성격·기질\n`;
+
+  // 1) 일주 고유 성격
+  if (iu['고유성격']) {
+    t += `【일주 고유 성격】\n${iu['고유성격']}\n\n`;
+  }
+
+  // 2) 성별 성격 분기 — 시트10(전문) 우선, DNA H1은 보조
+  const personality10 = (gt['성격분기'] || '').trim();
+  const personalityDNA = (dnaG['H1_표정온도'] || '').trim();
+  const personalitySource = personality10.length >= personalityDNA.length ? personality10 : personalityDNA;
+  if (personalitySource) {
+    t += `【${gkr} 성격 특징】\n${personalitySource}\n\n`;
+  }
+
+  // 3) 분위기·존재감 — 공통이 더 풍부하면 공통 사용
+  const atmoCommon = (dnaC['H2_분위기'] || '').trim();
+  const atmoGender = (dnaG['H2_분위기'] || '').trim();
+  const atmosphere = atmoCommon.length >= atmoGender.length ? atmoCommon : atmoGender;
+  if (atmosphere) {
+    t += `【분위기·존재감】\n${atmosphere}\n\n`;
+  }
+
+  // 4) 감정의 중력
+  const emotion = (dna['H5_감정중력'] || '').trim();
+  if (emotion) {
+    t += `【감정의 중력】\n${emotion}\n\n`;
+  }
+
+  // 5) 관계 패턴
+  if (gt['관계패턴']) {
+    t += `【관계 패턴】\n${gt['관계패턴']}\n\n`;
+  }
+
+  // ─── 외형 상세 (설명형) ───
+  t += `■ 캐릭터 외형 상세\n`;
+
+  // 골격·체형
+  const bodyDesc = (dnaG['A1_골격'] || dnaC['A1_골격'] || '').trim();
+  const silhouette = (dnaG['A2_체형'] || dnaC['A2_체형'] || '').trim();
+  if (bodyDesc) t += `【체형·골격】\n${bodyDesc}\n`;
+  if (silhouette) t += `【실루엣·자세】\n${silhouette}\n`;
+
+  // 얼굴
+  const face = (dnaG['B1_얼굴형'] || dnaC['B1_얼굴형'] || '').trim();
+  if (face) t += `【얼굴형】\n${face}\n`;
+
+  // 눈
+  const eyes = (dnaG['B2_눈'] || dnaC['B2_눈'] || '').trim();
+  if (eyes) t += `【눈·눈빛】\n${eyes}\n`;
+
+  // 이면의 눈매 (각성 시)
+  const hiddenEyes = (dna['B3_이면눈매'] || '').trim();
+  if (hiddenEyes) t += `【이면의 눈매(각성 시)】\n${hiddenEyes}\n`;
+
+  // 눈썹
+  const brow = (dna['B4_눈썹'] || '').trim();
+  if (brow) t += `【눈썹】\n${brow}\n`;
+
+  // 코·입
+  const nose = (dna['B5_코'] || '').trim();
+  const mouth = (dna['B6_입'] || '').trim();
+  if (nose) t += `【코】\n${nose}\n`;
+  if (mouth) t += `【입】\n${mouth}\n`;
+
+  // 얼굴 음영
+  const faceShadow = (dna['B7_얼굴음영'] || '').trim();
+  if (faceShadow) t += `【얼굴 음영】\n${faceShadow}\n`;
+
+  // 피부톤
+  const skin = (dnaG['C1_피부톤'] || dnaC['C1_피부톤'] || '').trim();
+  if (skin) t += `【피부톤·질감】\n${skin}\n`;
+
+  // 헤어
+  const hair = (dnaG['D1_헤어'] || dnaC['D1_헤어'] || '').trim();
+  const hairPhysics = (dna['D2_머리물리'] || '').trim();
+  if (hair) t += `【헤어 스타일】\n${hair}\n`;
+  if (hairPhysics) t += `【머리카락 물리】\n${hairPhysics}\n`;
+
+  // 수염 (남성)
+  if (g === '남') {
+    const beard = (dnaG['D3_수염'] || dnaC['D3_수염'] || '').trim();
+    if (beard) t += `【수염·체모】\n${beard}\n`;
+  }
+
+  // ─── 의상·스타일 ───
+  t += `\n■ 의상·스타일\n`;
+  const outfit = (dnaG['E1_의복핏'] || dnaC['E1_의복핏'] || '').trim();
+  const top = (dnaG['E2_상의'] || dnaC['E2_상의'] || '').trim();
+  const bottom = (dnaG['E3_하의'] || dnaC['E3_하의'] || '').trim();
+  const shoes = (dnaG['E5_신발'] || dnaC['E5_신발'] || '').trim();
+  if (outfit) t += `【의복·핏】\n${outfit}\n`;
+  if (top) t += `【상의】\n${top}\n`;
+  if (bottom) t += `【하의】\n${bottom}\n`;
+  if (shoes) t += `【신발】\n${shoes}\n`;
+
+  // 스타일 분기 (시트10)
+  if (gt['스타일분기']) t += `【${gkr} 스타일 방향】\n${gt['스타일분기']}\n`;
+
+  // ─── 장신구·아이템 ───
+  const headAcc = (dna['F1_머리악세'] || '').trim();
+  const bodyAcc = (dna['F2_몸악세'] || '').trim();
+  const weapon = (dna['F3_소울웨폰'] || '').trim();
+  if (headAcc || bodyAcc || weapon) {
+    t += `\n■ 장신구·아이템\n`;
+    if (headAcc) t += `【머리·얼굴 악세서리】\n${headAcc}\n`;
+    if (bodyAcc) t += `【몸 악세서리】\n${bodyAcc}\n`;
+    if (weapon) t += `【소울 웨폰】\n${weapon}\n`;
+  }
+
+  // ─── 기운·이펙트 ───
+  const aura = (dna['G1_아우라'] || '').trim();
+  const effectColor = (dna['G2_이펙트컬러'] || '').trim();
+  const shadow = (dna['G3_그림자'] || '').trim();
+  if (aura || effectColor) {
+    t += `\n■ 기운·이펙트\n`;
+    if (aura) t += `【아우라·질감】\n${aura}\n`;
+    if (effectColor) t += `【이펙트 컬러】\n${effectColor}\n`;
+    if (shadow) t += `【그림자】\n${shadow}\n`;
+  }
+
+  // ─── 연기·포즈 ───
+  t += `\n■ 표정·포즈·연출\n`;
+  const exprTemp = (dnaC['H1_표정온도'] || '').trim();
+  if (exprTemp) t += `【표정 온도】\n${exprTemp}\n`;
+  const gesture = (dnaG['H3_제스처'] || dnaC['H3_제스처'] || '').trim();
+  if (gesture) t += `【시그니처 제스처】\n${gesture}\n`;
+  const voice = (dna['H4_음성톤'] || '').trim();
+  if (voice) t += `【음성 톤 (분위기 참고)】\n${voice}\n`;
+  const age = (dna['H7_나이대종족'] || '').trim();
+  if (age) t += `【나이대·종족】\n${age}\n`;
+
+  // ─── 월지 보정 ───
+  if (w) {
+    const season = SEASON_MAP[w] || '';
+    const mood = SEASON_MOOD[w] || '';
+    t += `\n■ 월지(${KR_JI[w]}·${w}) 보정\n`;
+    t += `이 캐릭터는 ${season}(${KR_JI[w]}월) 태생입니다.\n`;
+    t += `계절 분위기(${mood})를 의상 색감·조명·전체 톤에 은은히 반영하세요.\n`;
+    const r = cr(ji, w);
+    if (r.t === '육합') {
+      t += `일지·월지가 ${r.d}으로 조화롭게 결합합니다. 안정적이고 통일된 에너지를 외형에서 느낄 수 있도록 표현하세요.\n`;
+    } else if (r.t === '충') {
+      t += `일지·월지가 ${r.d}으로 충돌합니다. 내면의 이중성, 긴장감을 눈빛이나 자세에 반영하세요.\n`;
     }
   }
 
-  t += `\n■ 캐릭터 외형 상세\n`;
-  
-  // 시트3에서 읽어온 데이터 사용
-  if (d['성격 요약']) t += `【성격 기반 인상】${d['성격 요약'].substring(0,80)}\n`;
-  if (d['외형 경향']) t += `【외형 경향】${d['외형 경향'].substring(0,100)}\n`;
-  
-  // 천간 상세
-  if (d['천간_외형 경향']) t += `【천간 외형】${d['천간_외형 경향']}\n`;
-  if (d['천간_체형']) t += `【천간 체형】${d['천간_체형']}\n`;
-  if (d['천간_피부톤']) t += `【천간 피부톤】${d['천간_피부톤']}\n`;
-  if (d['천간_눈·코·입 특징']) t += `【천간 눈·코·입】${d['천간_눈·코·입 특징']}\n`;
-  if (d['천간_분위기 키워드']) t += `【천간 분위기】${d['천간_분위기 키워드']}\n`;
-  if (d['천간_스타일 방향']) t += `【천간 스타일】${d['천간_스타일 방향']}\n`;
-  
-  // 지지 상세
-  if (d['지지_체형']) t += `【지지 체형 변형】${d['지지_체형']}\n`;
-  if (d['지지_피부톤']) t += `【지지 피부톤 변형】${d['지지_피부톤']}\n`;
-  if (d['지지_눈·코·입 특징']) t += `【지지 눈·코·입 변형】${d['지지_눈·코·입 특징']}\n`;
-  if (d['지지_분위기 키워드']) t += `【지지 분위기】${d['지지_분위기 키워드']}\n`;
-  
-  // 성별 특화
-  const gKey = g==='남' ? '남성' : '여성';
-  if (d[`천간_${gKey} 외형 경향`]) t += `【${gkr} 외형】${d[`천간_${gKey} 외형 경향`]}\n`;
-  if (d[`지지_${gKey} 외형 경향`]) t += `【${gkr} 지지 외형】${d[`지지_${gKey} 외형 경향`]}\n`;
-  if (d[`천간_${gKey} 성격 특징`]) t += `【${gkr} 성격】${d[`천간_${gKey} 성격 특징`]}\n`;
-
-  // 월지 보정
-  if (w) {
-    const wjData = getWolji(w);
-    if (wjData['외형 변형 포인트']) t += `【월지 외형 보정】${wjData['외형 변형 포인트']}\n`;
-    if (wjData['성격 변형 포인트']) t += `【월지 성격 보정】${wjData['성격 변형 포인트']}\n`;
-  }
-
+  // ─── 규칙 ───
   t += `\n■ 반드시 지켜야 할 규칙\n`;
   t += `1. 그림 스타일: 일본 만화 현대 소년물 (선이 굵고 명확, 명암 대비 강함)\n`;
   t += `2. 배경: 순수 흰색(#FFFFFF)만. 어떤 배경 요소도 넣지 않음\n`;
@@ -168,32 +324,58 @@ function genWebAI(il, g, w) {
   return t;
 }
 
+// ================================================================
+// SD/ComfyUI 프롬프트
+// ================================================================
 function genSD(il, g, w) {
-  const d = getIlju(il);
-  const ge = g==='남' ? 'male' : 'female';
-  let parts = ['Japanese shonen manga style, modern setting, full body, standing pose','pure white background','bold ink outlines, detailed manga eyes, cel shading',`single ${ge} character`];
-  
-  // 천간/지지 외형을 영문 키워드로 변환 (간략)
+  const ge = g === '남' ? 'male' : 'female';
   const oh = OH_MAP[il[0]];
-  const ohStyles = {목:'slender tall, green/beige tones',화:'athletic vivid, red/orange accent',토:'sturdy broad, brown/khaki earth tones',금:'angular sharp, monochrome silver/black',수:'fluid graceful, navy/blue/purple tones'};
+  const gt = getGenderTraits(il[0], g === '남' ? '남' : '녀');
+  const dnaG = getDNAGender(il, g);
+
+  let parts = [
+    'Japanese shonen manga style, modern setting, full body, standing pose',
+    'pure white background',
+    'bold ink outlines, detailed manga eyes, cel shading',
+    `single ${ge} character`
+  ];
+
+  const ohStyles = {
+    목:'slender tall, green/beige tones',
+    화:'athletic vivid, red/orange accent',
+    토:'sturdy broad, brown/khaki earth tones',
+    금:'angular sharp, monochrome silver/black',
+    수:'fluid graceful, navy/blue/purple tones'
+  };
   parts.push(ohStyles[oh] || '');
-  
-  if (d['천간_외형 경향']) parts.push(d['천간_외형 경향'].replace(/[,，]/g,',').substring(0,60));
-  
-  if (w) {
-    const wjData = getWolji(w);
-    if (wjData['외형 변형 포인트']) parts.push(wjData['외형 변형 포인트'].substring(0,40));
+
+  // 영문 외형 태그 (시트10)
+  if (gt['프롬프트외형태그']) {
+    parts.push(gt['프롬프트외형태그'].substring(0, 80));
   }
 
-  parts.push(`small text '${il}' top left corner`,'masterpiece, best quality, highly detailed');
+  // DNA 분위기 키워드 (H2에서 영문 부분 추출)
+  const h2 = (dnaG['H2_분위기'] || '').trim();
+  const enMatch = h2.match(/[a-zA-Z][a-zA-Z, ]+/g);
+  if (enMatch) {
+    parts.push(enMatch.join(', ').substring(0, 60));
+  }
+
+  if (w) {
+    const seasonEn = {寅:'spring green fresh',卯:'spring vibrant',辰:'misty transition',巳:'summer warm red',午:'summer intense bright',未:'humid warm',申:'autumn cool gold',酉:'autumn silver moonlight',戌:'autumn sunset brown',亥:'winter deep navy',子:'winter midnight dark',丑:'winter dawn muted'};
+    parts.push(seasonEn[w] || '');
+  }
+
+  parts.push(`small text '${il}' top left corner`, 'masterpiece, best quality, highly detailed');
+
   return {
-    pos: parts.join(', '),
+    pos: parts.filter(p => p).join(', '),
     neg: 'background, scenery, multiple characters, chibi, realistic photo, 3D, watermark, fantasy armor, medieval, wings, horns, animal ears, blurry, bad anatomy, extra limbs'
   };
 }
 
 // ================================================================
-// 복사 함수
+// 복사
 // ================================================================
 function doCopy(text, btnId) {
   const btn = document.getElementById(btnId);
@@ -258,7 +440,7 @@ function rPanel() {
   if (!S.ilju) { P.innerHTML = ''; return; }
   const il = S.ilju, g = S.g, w = S.w;
   const oh = OH_MAP[il[0]], oc = OC[oh];
-  const d = getIlju(il);
+  const iu = getIljuUnique(il);
   const wp = genWebAI(il, g, w), sd = genSD(il, g, w);
   const r = w ? cr(il[1], w) : null;
 
@@ -269,10 +451,11 @@ function rPanel() {
   // 뱃지
   h += `<div class="row" style="margin-bottom:10px">`;
   [{l:'오행',v:oh},{l:'음양',v:YY_MAP[il[0]]}].forEach(b => { h += `<span class="badge"><strong style="color:${oc}">${b.l}</strong> ${b.v}</span>`; });
-  if (d['강점']) h += `<span class="badge"><strong style="color:#66bb6a">강점</strong> ${d['강점'].substring(0,25)}</span>`;
+  if (iu['십이운성']) h += `<span class="badge"><strong style="color:#ab47bc">운성</strong> ${iu['십이운성']}</span>`;
+  if (iu['일지십성']) h += `<span class="badge"><strong style="color:#42a5f5">십성</strong> ${iu['일지십성']}</span>`;
+  if (iu['납음']) h += `<span class="badge"><strong style="color:#ff9800">납음</strong> ${iu['납음']}</span>`;
   if (w) {
-    const wjd = getWolji(w);
-    if (wjd['계절']) h += `<span class="badge"><strong style="color:#ff9800">계절</strong> ${wjd['계절']}</span>`;
+    h += `<span class="badge"><strong style="color:#66bb6a">계절</strong> ${SEASON_MAP[w]||''}</span>`;
   }
   h += `</div>`;
 
