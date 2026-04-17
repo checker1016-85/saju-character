@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>사주명리 캐릭터 프롬프트 엔진</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700;900&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Noto Sans KR',sans-serif;background:#08080a;color:#d0d0d0;min-height:100vh}
+.wrap{max-width:960px;margin:0 auto;padding:12px}
+h1{font-size:20px;font-weight:900;text-align:center;background:linear-gradient(90deg,#ef5350,#ff9800,#66bb6a,#42a5f5,#ab47bc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:2px}
+.sub{font-size:11px;color:#666;text-align:center;margin-bottom:14px}
+.loading{text-align:center;padding:40px;color:#888;font-size:14px}
+.grid60{display:grid;grid-template-columns:repeat(10,1fr);gap:2px;margin-bottom:14px}
+.grid60 button{padding:5px 0;font-size:13px;font-weight:500;cursor:pointer;background:#141414;color:#888;border:1px solid #2a2a2a;border-radius:3px;transition:all .12s;font-family:inherit}
+.grid60 button:hover{border-color:#555}
+.sl{font-size:8px;opacity:.6;display:block}
+.panel{background:#111;border:1px solid #2a2a2a;border-radius:8px;padding:14px;margin-bottom:10px}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.badge{font-size:10px;padding:2px 7px;background:#1a1a1a;border-radius:2px;color:#999;display:inline-block;margin:2px}
+.gbtn{padding:5px 16px;font-size:13px;font-weight:700;border-radius:3px;cursor:pointer;border:1px solid #333;background:#1a1a1a;color:#555;font-family:inherit}
+.gbtn.am{background:#1565C0;color:#fff;border-color:#1565C0}
+.gbtn.af{background:#C62828;color:#fff;border-color:#C62828}
+.wlabel{font-size:11px;color:#888;margin-bottom:4px;font-weight:700}
+.wg{display:grid;grid-template-columns:repeat(13,1fr);gap:2px;margin-bottom:10px}
+.wg button{padding:5px 2px;font-size:9px;cursor:pointer;background:#1a1a1a;color:#999;border:1px solid #2a2a2a;border-radius:2px;font-family:inherit;transition:all .1s}
+.wg button:hover{border-color:#555;color:#ccc}
+.wg button.sel{background:#444;color:#fff;border-color:#666;font-weight:700}
+.rel-box{padding:6px 10px;margin-bottom:8px;border-radius:4px;font-size:11px}
+.rel-h{background:#1B5E2033;border:1px solid #2E7D32;color:#81C784}
+.rel-c{background:#C6282833;border:1px solid #C62828;color:#EF9A9A}
+.psec{margin-bottom:14px}
+.plbl{font-size:13px;font-weight:700;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+.ptxt{width:100%;min-height:120px;font-size:11px;line-height:1.8;padding:10px;background:#0a0d12;border-radius:4px;border:1px solid #1a1a1a;color:#bbb;resize:vertical;font-family:'Noto Sans KR',sans-serif;outline:none}
+.ptxt:focus{border-color:#555}
+.ptxt.big{min-height:280px;font-size:12px;line-height:1.9;color:#ddd}
+.cbtn{font-size:12px;padding:5px 16px;background:#ff9800;color:#000;border:none;border-radius:4px;cursor:pointer;font-family:inherit;font-weight:700}
+.cbtn.ok{background:#2E7D32;color:#fff}
+.cbtn2{font-size:11px;padding:4px 12px;background:#333;color:#ccc;border:1px solid #555;border-radius:3px;cursor:pointer;font-family:inherit}
+.cbtn2.ok{background:#2E7D32;color:#fff}
+.guide{background:#0d0d0d;border:1px solid #1a1a1a;border-radius:6px;padding:12px;font-size:10px;color:#666;line-height:1.8;margin-top:10px}
+.guide strong{color:#aaa}
+.tip{font-size:10px;color:#ff9800;margin-top:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>四柱命理 캐릭터 프롬프트 엔진</h1>
+<p class="sub">일주 선택 → 성별 → 월지(선택) → 복사 → AI에 붙여넣기</p>
+<div id="app"><div class="loading">⏳ 데이터 로딩 중...</div></div>
+</div>
+<textarea id="hc" style="position:fixed;top:-9999px;left:-9999px"></textarea>
+
+<script>
+// ================================================================
+// 오행 매핑 (고정 — DB 변경 불필요)
+// ================================================================
+const OH_MAP={甲:'목',乙:'목',丙:'화',丁:'화',戊:'토',己:'토',庚:'금',辛:'금',壬:'수',癸:'수'};
+const YY_MAP={甲:'양',乙:'음',丙:'양',丁:'음',戊:'양',己:'음',庚:'양',辛:'음',壬:'양',癸:'음'};
+const KR_CH={甲:'갑',乙:'을',丙:'병',丁:'정',戊:'무',己:'기',庚:'경',辛:'신',壬:'임',癸:'계'};
+const KR_JI={子:'자',丑:'축',寅:'인',卯:'묘',辰:'진',巳:'사',午:'오',未:'미',申:'신',酉:'유',戌:'술',亥:'해'};
+const OC={목:'#2E7D32',화:'#C62828',토:'#cf7e0a',금:'#546E7A',수:'#1565C0'};
+const IL=["甲子","乙丑","丙寅","丁卯","戊辰","己巳","庚午","辛未","壬申","癸酉","甲戌","乙亥","丙子","丁丑","戊寅","己卯","庚辰","辛巳","壬午","癸未","甲申","乙酉","丙戌","丁亥","戊子","己丑","庚寅","辛卯","壬辰","癸巳","甲午","乙未","丙申","丁酉","戊戌","己亥","庚子","辛丑","壬寅","癸卯","甲辰","乙巳","丙午","丁未","戊申","己酉","庚戌","辛亥","壬子","癸丑","甲寅","乙卯","丙辰","丁巳","戊午","己未","庚申","辛酉","壬戌","癸亥"];
+const YK={'子丑':'토','丑子':'토','寅亥':'목','亥寅':'목','卯戌':'화','戌卯':'화','辰酉':'금','酉辰':'금','巳申':'수','申巳':'수','午未':'토','未午':'토'};
+const CG=new Set(['子午','午子','丑未','未丑','寅申','申寅','卯酉','酉卯','辰戌','戌辰','巳亥','亥巳']);
+const WJ_JI=['寅','卯','辰','巳','午','未','申','酉','戌','亥','子','丑'];
+
+function cr(a,b){const p=a+b;if(YK[p])return{t:'육합',d:a+b+'합'+YK[p],pk:'조화롭고 안정된 에너지.'};if(CG.has(p))return{t:'충',d:a+b+'충',pk:'내면의 긴장. 충돌하는 이중 에너지.'};return{t:'',d:'',pk:''};}
+
+// ================================================================
+// 데이터 로드 + 앱 초기화
+// ================================================================
+let DB = null;
+let S = {ilju:null, g:'남', w:null};
+
+async function init() {
+  try {
+    const res = await fetch('saju_db.json');
+    if (!res.ok) throw new Error('파일 없음');
+    DB = await res.json();
+    console.log('DB 로드 완료:', DB.ilju.length, '일주');
+    renderApp();
+  } catch(e) {
+    document.getElementById('app').innerHTML = `
+      <div class="loading" style="color:#ef5350">
+        ❌ saju_db.json 파일을 불러올 수 없습니다.<br><br>
+        <span style="font-size:12px;color:#888">
+        이 HTML과 같은 폴더에 saju_db.json이 있어야 합니다.<br>
+        로컬에서 열려면 Live Server가 필요합니다. (GitHub Pages에서는 자동 작동)
+        </span>
+      </div>`;
+  }
+}
+
+// 일주 데이터 찾기
+function getIlju(name) {
+  return DB.ilju.find(d => d['일주'] === name) || {};
+}
+function getWolji(monthStr) {
+  return DB.wolji.find(d => d['월주(월간·월지)'] && d['월주(월간·월지)'].includes(monthStr)) || {};
+}
+
+// ================================================================
+// 프롬프트 생성 (DB에서 읽어서 조합)
+// ================================================================
+function genWebAI(il, g, w) {
+  const d = getIlju(il);
+  const ch = il[0], ji = il[1];
+  const oh = OH_MAP[ch], yy = YY_MAP[ch];
+  const gkr = g==='남' ? '남성' : '여성';
+  const gk = g==='남' ? '남성' : '여성';
+
+  let t = `아래 설정을 기반으로 **일본 소년만화 스타일**(나루토, 주술회전 화풍)의 캐릭터 일러스트를 그려주세요.\n\n`;
+  t += `■ 기본 정보\n`;
+  t += `- 일주: ${il} (${KR_CH[ch]}${KR_JI[ji]}) | 오행: ${oh} | 음양: ${yy}\n`;
+  t += `- 성별: ${gkr}\n`;
+
+  if (w) {
+    const wjData = getWolji(w);
+    const r = cr(ji, w);
+    if (wjData['월주(월간·월지)']) {
+      t += `- 월지: ${wjData['월주(월간·월지)']} (${wjData['계절']||''})\n`;
+      if (r.t) t += `  → ${r.t}: ${r.pk}\n`;
+    }
+  }
+
+  t += `\n■ 캐릭터 외형 상세\n`;
+  
+  // 시트3에서 읽어온 데이터 사용
+  if (d['성격 요약']) t += `【성격 기반 인상】${d['성격 요약'].substring(0,80)}\n`;
+  if (d['외형 경향']) t += `【외형 경향】${d['외형 경향'].substring(0,100)}\n`;
+  
+  // 천간 상세
+  if (d['천간_외형 경향']) t += `【천간 외형】${d['천간_외형 경향']}\n`;
+  if (d['천간_체형']) t += `【천간 체형】${d['천간_체형']}\n`;
+  if (d['천간_피부톤']) t += `【천간 피부톤】${d['천간_피부톤']}\n`;
+  if (d['천간_눈·코·입 특징']) t += `【천간 눈·코·입】${d['천간_눈·코·입 특징']}\n`;
+  if (d['천간_분위기 키워드']) t += `【천간 분위기】${d['천간_분위기 키워드']}\n`;
+  if (d['천간_스타일 방향']) t += `【천간 스타일】${d['천간_스타일 방향']}\n`;
+  
+  // 지지 상세
+  if (d['지지_체형']) t += `【지지 체형 변형】${d['지지_체형']}\n`;
+  if (d['지지_피부톤']) t += `【지지 피부톤 변형】${d['지지_피부톤']}\n`;
+  if (d['지지_눈·코·입 특징']) t += `【지지 눈·코·입 변형】${d['지지_눈·코·입 특징']}\n`;
+  if (d['지지_분위기 키워드']) t += `【지지 분위기】${d['지지_분위기 키워드']}\n`;
+  
+  // 성별 특화
+  const gKey = g==='남' ? '남성' : '여성';
+  if (d[`천간_${gKey} 외형 경향`]) t += `【${gkr} 외형】${d[`천간_${gKey} 외형 경향`]}\n`;
+  if (d[`지지_${gKey} 외형 경향`]) t += `【${gkr} 지지 외형】${d[`지지_${gKey} 외형 경향`]}\n`;
+  if (d[`천간_${gKey} 성격 특징`]) t += `【${gkr} 성격】${d[`천간_${gKey} 성격 특징`]}\n`;
+
+  // 월지 보정
+  if (w) {
+    const wjData = getWolji(w);
+    if (wjData['외형 변형 포인트']) t += `【월지 외형 보정】${wjData['외형 변형 포인트']}\n`;
+    if (wjData['성격 변형 포인트']) t += `【월지 성격 보정】${wjData['성격 변형 포인트']}\n`;
+  }
+
+  t += `\n■ 반드시 지켜야 할 규칙\n`;
+  t += `1. 그림 스타일: 일본 만화 현대 소년물 (선이 굵고 명확, 명암 대비 강함)\n`;
+  t += `2. 배경: 순수 흰색(#FFFFFF)만. 어떤 배경 요소도 넣지 않음\n`;
+  t += `3. 왼쪽 상단에 "${il}" 텍스트를 작게 표기 (캐릭터와 겹치지 않게)\n`;
+  t += `4. 현대물 기준 의상. 판타지 갑옷·한복·날개·뿔 금지\n`;
+  t += `5. 전신 기본 정자세. 성격에 맞는 약간의 포즈 변형 허용\n`;
+  t += `6. 한 명의 캐릭터만 그릴 것`;
+  return t;
+}
+
+function genSD(il, g, w) {
+  const d = getIlju(il);
+  const ge = g==='남' ? 'male' : 'female';
+  let parts = ['Japanese shonen manga style, modern setting, full body, standing pose','pure white background','bold ink outlines, detailed manga eyes, cel shading',`single ${ge} character`];
+  
+  // 천간/지지 외형을 영문 키워드로 변환 (간략)
+  const oh = OH_MAP[il[0]];
+  const ohStyles = {목:'slender tall, green/beige tones',화:'athletic vivid, red/orange accent',토:'sturdy broad, brown/khaki earth tones',금:'angular sharp, monochrome silver/black',수:'fluid graceful, navy/blue/purple tones'};
+  parts.push(ohStyles[oh] || '');
+  
+  if (d['천간_외형 경향']) parts.push(d['천간_외형 경향'].replace(/[,，]/g,',').substring(0,60));
+  
+  if (w) {
+    const wjData = getWolji(w);
+    if (wjData['외형 변형 포인트']) parts.push(wjData['외형 변형 포인트'].substring(0,40));
+  }
+
+  parts.push(`small text '${il}' top left corner`,'masterpiece, best quality, highly detailed');
+  return {
+    pos: parts.join(', '),
+    neg: 'background, scenery, multiple characters, chibi, realistic photo, 3D, watermark, fantasy armor, medieval, wings, horns, animal ears, blurry, bad anatomy, extra limbs'
+  };
+}
+
+// ================================================================
+// 복사 함수
+// ================================================================
+function doCopy(text, btnId) {
+  const btn = document.getElementById(btnId);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => ok(btn)).catch(() => fb(text, btn));
+    return;
+  }
+  fb(text, btn);
+}
+function fb(text, btn) {
+  const ta = document.getElementById('hc');
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0.01';
+  ta.value = text; ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length);
+  try { if (document.execCommand('copy')) ok(btn); else mn(btn); } catch(e) { mn(btn); }
+  ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px';
+}
+function ok(btn) { if(btn){btn.textContent='✅ 복사 완료!';btn.classList.add('ok');setTimeout(()=>{btn.textContent='📋 복사';btn.classList.remove('ok')},2000)} }
+function mn(btn) { if(btn) btn.textContent='⚠ 텍스트 클릭 후 Ctrl+C'; }
+function selAll(el) { el.focus(); el.select(); el.setSelectionRange(0, el.value.length); }
+
+// ================================================================
+// UI 렌더링
+// ================================================================
+function renderApp() {
+  const app = document.getElementById('app');
+  app.innerHTML = `<div id="grid" class="grid60"></div><div id="panel"></div>
+    <div class="guide">
+      <strong>📖 사용법</strong><br>
+      ① 일주 클릭 → 성별 선택 → (선택) 월지 선택<br>
+      ② <strong style="color:#ff9800">「웹AI용 복사」</strong> 클릭 → ChatGPT/Gemini/Claude에 Ctrl+V<br>
+      ③ SD/ComfyUI 사용자는 하단 토글 열어서 영문 프롬프트 복사<br>
+      ※ 복사 안 되면 텍스트 영역 클릭(전체선택) → Ctrl+C
+    </div>`;
+  rGrid();
+}
+
+function rGrid() {
+  const g = document.getElementById('grid'); g.innerHTML = '';
+  IL.forEach(il => {
+    const oh = OH_MAP[il[0]];
+    const b = document.createElement('button');
+    b.innerHTML = `<span style="font-size:14px;font-weight:700">${il}</span><span class="sl">${KR_CH[il[0]]}${KR_JI[il[1]]}</span>`;
+    b.dataset.il = il;
+    b.onclick = () => { S.ilju = il; S.w = null; rAll(); };
+    g.appendChild(b);
+  });
+}
+
+function rAll() {
+  document.querySelectorAll('.grid60 button').forEach(b => {
+    const is = b.dataset.il === S.ilju, oh = b.dataset.il ? OH_MAP[b.dataset.il[0]] : '';
+    b.style.background = is ? OC[oh] || '#333' : '#141414';
+    b.style.color = is ? '#fff' : '#888';
+    b.style.borderColor = is ? OC[oh] || '#555' : '#2a2a2a';
+    b.style.fontWeight = is ? '800' : '500';
+  });
+  rPanel();
+}
+
+function rPanel() {
+  const P = document.getElementById('panel');
+  if (!S.ilju) { P.innerHTML = ''; return; }
+  const il = S.ilju, g = S.g, w = S.w;
+  const oh = OH_MAP[il[0]], oc = OC[oh];
+  const d = getIlju(il);
+  const wp = genWebAI(il, g, w), sd = genSD(il, g, w);
+  const r = w ? cr(il[1], w) : null;
+
+  let h = `<div class="panel">`;
+  h += `<div class="row"><span style="font-size:28px;font-weight:900;color:${oc}">${il}</span>`;
+  h += `<span style="font-size:12px;color:#777">${KR_CH[il[0]]}(${il[0]})+${KR_JI[il[1]]}(${il[1]})</span></div>`;
+
+  // 뱃지
+  h += `<div class="row" style="margin-bottom:10px">`;
+  [{l:'오행',v:oh},{l:'음양',v:YY_MAP[il[0]]}].forEach(b => { h += `<span class="badge"><strong style="color:${oc}">${b.l}</strong> ${b.v}</span>`; });
+  if (d['강점']) h += `<span class="badge"><strong style="color:#66bb6a">강점</strong> ${d['강점'].substring(0,25)}</span>`;
+  if (w) {
+    const wjd = getWolji(w);
+    if (wjd['계절']) h += `<span class="badge"><strong style="color:#ff9800">계절</strong> ${wjd['계절']}</span>`;
+  }
+  h += `</div>`;
+
+  // 성별
+  h += `<div style="margin-bottom:10px"><span style="font-size:11px;color:#888;font-weight:700;margin-right:8px">성별</span>`;
+  h += `<button class="gbtn ${g==='남'?'am':''}" onclick="S.g='남';rAll()">♂ 남</button> `;
+  h += `<button class="gbtn ${g==='녀'?'af':''}" onclick="S.g='녀';rAll()">♀ 녀</button></div>`;
+
+  // 월지
+  h += `<div style="margin-bottom:10px"><div class="wlabel">🌙 월지 보정 (선택)</div><div class="wg">`;
+  h += `<button class="${!w?'sel':''}" onclick="S.w=null;rAll()">없음</button>`;
+  WJ_JI.forEach((k,i) => {
+    const is = w === k;
+    const monthNum = ((i+1) % 12) || 12;
+    h += `<button class="${is?'sel':''}" onclick="S.w='${k}';rAll()"><div>${KR_JI[k]}(${k})</div><div style="font-size:7px;opacity:.7">${monthNum}월</div></button>`;
+  });
+  h += `</div></div>`;
+
+  // 합충 표시
+  if (r && r.t) { h += `<div class="rel-box ${r.t==='육합'?'rel-h':'rel-c'}">${r.t==='육합'?'🤝':'⚔️'} <strong>${r.d}</strong> — ${r.pk}</div>`; }
+
+  // ★ 웹AI
+  h += `<div class="psec"><div class="plbl"><span style="color:#ff9800;font-size:14px">★ 웹AI용 프롬프트</span>`;
+  h += `<button class="cbtn" id="cp1" onclick="doCopy(document.getElementById('t1').value,'cp1')">📋 복사</button></div>`;
+  h += `<textarea class="ptxt big" id="t1" onclick="selAll(this)" readonly>${wp}</textarea>`;
+  h += `<div class="tip">💡 복사 버튼이 안 되면 → 텍스트 영역 클릭(전체 선택) → Ctrl+C</div></div>`;
+
+  // SD 토글
+  h += `<div style="margin-top:4px"><button onclick="var el=document.getElementById('sdw');if(el.style.display==='none'){el.style.display='block';this.textContent='▼ SD/ComfyUI 프롬프트 닫기'}else{el.style.display='none';this.textContent='▶ SD/ComfyUI 프롬프트 열기'}" style="font-size:11px;padding:5px 14px;background:#1a1a1a;color:#888;border:1px solid #333;border-radius:3px;cursor:pointer;font-family:inherit">▶ SD/ComfyUI 프롬프트 열기</button></div>`;
+  h += `<div id="sdw" style="display:none;margin-top:8px">`;
+  h += `<div class="psec"><div class="plbl"><span style="color:#66bb6a">Positive</span><button class="cbtn2" id="cp2" onclick="doCopy(document.getElementById('t2').value,'cp2')">📋 복사</button></div>`;
+  h += `<textarea class="ptxt" id="t2" onclick="selAll(this)" readonly>${sd.pos}</textarea></div>`;
+  h += `<div class="psec"><div class="plbl"><span style="color:#ef5350">Negative</span><button class="cbtn2" id="cp3" onclick="doCopy(document.getElementById('t3').value,'cp3')">📋 복사</button></div>`;
+  h += `<textarea class="ptxt" id="t3" onclick="selAll(this)" readonly style="min-height:50px;font-size:10px;color:#777">${sd.neg}</textarea></div></div>`;
+
+  h += `</div>`;
+  P.innerHTML = h;
+}
+
+// 시작
+init();
+</script>
+</body>
+</html>
