@@ -1,0 +1,40 @@
+name: Excel to JSON Automation
+
+on:
+  push:
+    paths:
+      - '*.xlsx'  # 엑셀 파일이 업데이트될 때만 공장이 돌아갑니다.
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 깃허브가 파일(JSON)을 스스로 수정할 수 있게 권한을 줍니다.
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pandas openpyxl
+
+    - name: Run conversion script
+      run: |
+        # 올려둔 파이썬 스크립트를 실행해서 JSON을 만듭니다.
+        python excel_to_json.py
+
+    - name: Commit and Push changes
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git add saju_db.json
+        # 변경사항이 있을 때만 저장소에 다시 올립니다.
+        git commit -m "Auto-update saju_db.json from Excel" || exit 0
+        git push
