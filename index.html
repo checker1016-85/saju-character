@@ -45,9 +45,7 @@ h1{font-size:20px;font-weight:900;text-align:center;background:linear-gradient(9
 .jbtn{padding:5px 2px;font-size:9px;cursor:pointer;background:#1a1a1a;color:#999;border:1px solid #2a2a2a;border-radius:2px;font-family:inherit;transition:all .1s}
 .jbtn:hover{border-color:#555;color:#ccc}
 .jbtn.jsel{background:#ff9800;color:#000;border-color:#ff9800;font-weight:700}
-.jbtn.jeta{border-color:#444;color:#666}
-.jbtn.jeta.jsel{background:#333;color:#fff;border-color:#666}
-.jg{display:grid;grid-template-columns:repeat(12,1fr);gap:2px;margin-bottom:10px}
+.jg{display:grid;grid-template-columns:repeat(10,1fr);gap:2px;margin-bottom:10px}
 </style>
 </head>
 <body>
@@ -122,7 +120,7 @@ function getJobList(il, g) {
   const result = [];
   for (const j of [...chJobs, ...ssJobs, ...allSsJobs]) {
     // job_visual에 있는 직업만 포함 (프롬프트 매핑 보장)
-    if (!seen.has(j) && result.length < 10) {
+    if (!seen.has(j) && result.length < 30) {
       seen.add(j);
       result.push(j);
     }
@@ -271,9 +269,9 @@ function genWebAI(il, g, w, job) {
   const eyes = (dnaG['B2_눈'] || dnaC['B2_눈'] || '').trim();
   if (eyes) t += `【눈·눈빛】\n${eyes}\n`;
 
-  // 이면의 눈매 (각성 시)
+  // 이면의 눈매 (감정 고조 시)
   const hiddenEyes = (dna['B3_이면눈매'] || '').trim();
-  if (hiddenEyes) t += `【이면의 눈매(각성 시)】\n${hiddenEyes}\n`;
+  if (hiddenEyes) t += `【감정 고조 시 눈빛 변화】\n${hiddenEyes}\n→ 전투/각성이 아닌, 결의·분노·감동 등 감정이 고조될 때의 눈빛 변화로 해석.\n`;
 
   // 눈썹
   const brow = (dna['B4_눈썹'] || '').trim();
@@ -306,7 +304,7 @@ function genWebAI(il, g, w, job) {
   }
 
   // ─── 직업·의상·스타일 ───
-  if (job && job !== '기타' && (DB.job_visual||{})[job]) {
+  if (job && (DB.job_visual||{})[job]) {
     t += `\n■ 직업·의상\n`;
     t += `【직업】${job}\n`;
     t += `【직업 비주얼】\n${DB.job_visual[job].desc}\n`;
@@ -328,26 +326,18 @@ function genWebAI(il, g, w, job) {
     if (gt['스타일분기']) t += `【${gkr} 스타일 방향】\n${gt['스타일분기']}\n`;
   }
 
-  // ─── 장신구·아이템 ───
+  // ─── 오행 장식·디테일 ───
   const headAcc = (dna['F1_머리악세'] || '').trim();
   const bodyAcc = (dna['F2_몸악세'] || '').trim();
-  const weapon = (dna['F3_소울웨폰'] || '').trim();
-  if (headAcc || bodyAcc || weapon) {
-    t += `\n■ 장신구·아이템\n`;
-    if (headAcc) t += `【머리·얼굴 악세서리】\n${headAcc}\n`;
-    if (bodyAcc) t += `【몸 악세서리】\n${bodyAcc}\n`;
-    if (weapon) t += `【소울 웨폰】\n${weapon}\n`;
-  }
-
-  // ─── 기운·이펙트 ───
-  const aura = (dna['G1_아우라'] || '').trim();
+  const pattern = (dna['F5_인장문양'] || '').trim();
   const effectColor = (dna['G2_이펙트컬러'] || '').trim();
-  const shadow = (dna['G3_그림자'] || '').trim();
-  if (aura || effectColor) {
-    t += `\n■ 기운·이펙트\n`;
-    if (aura) t += `【아우라·질감】\n${aura}\n`;
-    if (effectColor) t += `【이펙트 컬러】\n${effectColor}\n`;
-    if (shadow) t += `【그림자】\n${shadow}\n`;
+  if (headAcc || bodyAcc || pattern || effectColor) {
+    t += `\n■ 오행 장식·디테일\n`;
+    t += `※ 아래는 무기·판타지 아이템이 아닌, 의상·악세서리·헤어에 은은히 녹아드는 장식 디테일입니다.\n`;
+    if (headAcc) t += `【머리·얼굴 포인트】\n${headAcc}\n→ 헤어핀, 귀걸이, 안경 프레임, 머리끈 등 현대적 악세서리의 색감·소재에 반영.\n`;
+    if (bodyAcc) t += `【몸·의상 포인트】\n${bodyAcc}\n→ 목걸이, 팔찌, 반지, 벨트, 단추, 자수, 의상 안감 색상 등에 자연스럽게 반영.\n`;
+    if (pattern) t += `【문양·모티프】\n${pattern}\n→ 의상의 자수, 프린팅, 단추 문양, 악세서리 각인 등에 미세하게 반영. 과하지 않게.\n`;
+    if (effectColor) t += `【오행 컬러 악센트】\n${effectColor}\n→ 위 색상을 의상 안감, 신발 밑창, 눈동자 하이라이트, 머리카락 끝 그라데이션 등에 미세 반영.\n`;
   }
 
   // ─── 연기·포즈 ───
@@ -381,7 +371,7 @@ function genWebAI(il, g, w, job) {
   t += `1. 그림 스타일: 일본 만화 현대 소년물 (선이 굵고 명확, 명암 대비 강함)\n`;
   t += `2. 배경: 순수 흰색(#FFFFFF)만. 어떤 배경 요소도 넣지 않음\n`;
   t += `3. 왼쪽 상단에 "${il}" 텍스트를 작게 표기 (캐릭터와 겹치지 않게)\n`;
-  t += `4. 현대물 기준 의상. 판타지 갑옷·한복·날개·뿔 금지\n`;
+  t += `4. 현대물 기준 의상. 판타지 갑옷·한복·날개·뿔·무기(검, 지팡이 등) 금지. 오행 색감은 악세서리·의상 디테일로만 반영\n`;
   t += `5. 전신 기본 정자세. 성격에 맞는 약간의 포즈 변형 허용\n`;
   t += `6. 한 명의 캐릭터만 그릴 것`;
   return t;
@@ -403,8 +393,8 @@ function genSD(il, g, w, job) {
     `single ${ge} character`
   ];
 
-  // 직업 키워드 (기타 제외) — JSON에서 읽기
-  if (job && job !== '기타') {
+  // 직업 키워드 — JSON에서 읽기
+  if (job) {
     const jv = (DB.job_visual||{})[job];
     parts.push(jv && jv.sd ? jv.sd : job);
   }
@@ -439,7 +429,7 @@ function genSD(il, g, w, job) {
 
   return {
     pos: parts.filter(p => p).join(', '),
-    neg: 'background, scenery, multiple characters, chibi, realistic photo, 3D, watermark, fantasy armor, medieval, wings, horns, animal ears, blurry, bad anatomy, extra limbs'
+    neg: 'background, scenery, multiple characters, chibi, realistic photo, 3D, watermark, fantasy armor, medieval, wings, horns, animal ears, weapon, sword, staff, shield, magic aura, glowing effects, blurry, bad anatomy, extra limbs'
   };
 }
 
@@ -548,17 +538,14 @@ function rPanel() {
   h += `<div style="margin-bottom:10px"><div class="wlabel">💼 직업 선택 (선택)</div>`;
   h += `<div class="jg">`;
   const noJob = !S.job;
-  h += `<button class="jbtn${noJob?' jsel':''}" onclick="S.job=null;rAll()">없음</button>`;
+  h += `<button class="jbtn${noJob?' jsel':''}" onclick="S.job=null;rAll()">제외</button>`;
   jobs.forEach(j => {
     const isSel = S.job === j;
     h += `<button class="jbtn${isSel?' jsel':''}" onclick="S.job='${j}';rAll()">${j}</button>`;
   });
-  h += `<button class="jbtn jeta${S.job==='기타'?' jsel':''}" onclick="S.job='기타';rAll()">기타</button>`;
   h += `</div>`;
-  if (S.job && S.job !== '기타' && S.job !== null) {
+  if (S.job) {
     h += `<div style="margin-top:4px;font-size:10px;color:#ff9800">📌 「${S.job}」 직업 비주얼이 프롬프트에 반영됩니다.</div>`;
-  } else if (S.job === '기타') {
-    h += `<div style="margin-top:4px;font-size:10px;color:#888">ℹ️ 직업 비주얼 없이 오행 기반 의상만 적용됩니다.</div>`;
   }
   h += `</div>`;
 
