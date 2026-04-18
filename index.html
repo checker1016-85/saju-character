@@ -82,95 +82,11 @@ let DB = null;
 let S = {ilju:null, g:'남', w:null, job:null};
 
 // ================================================================
-// 십성 → 직업군 매핑 (고정값, JSON 불필요)
+// 십성→직업, 직업→비주얼 = JSON(DB)에서 읽음
+// DB.sipsung_jobs, DB.job_visual
 // ================================================================
-const SS_JOB = {
-  '비견':'자영업, 프리랜서, 동업, 스타트업',
-  '겁재':'투자, 영업, 스포츠, 승부직',
-  '식신':'요리, 예술, 교육, 콘텐츠, 연구',
-  '상관':'예술, 변호사, 비평가, 크리에이터',
-  '편재':'사업, 투자, 무역, 유통, 영업',
-  '정재':'회계, 공무원, 사무직, 관리, 금융',
-  '편관':'군인, 경찰, 검사, 외과의, 무술',
-  '정관':'공무원, 교사, 관리직, 법조, 행정',
-  '편인':'종교, 철학, 한의학, 연구, 대안교육',
-  '정인':'교수, 교사, 학자, 의사, 공무원'
-};
 
 // ================================================================
-// 직업 → 비주얼 프롬프트 (의상·소품·분위기)
-// ================================================================
-const JOB_PROMPT = {
-  '경영':'깔끔한 맞춤 정장 차림. 넥타이를 단정히 매고, 한 손에 서류 폴더나 태블릿을 들고 있다. 자신감 있는 자세로 정면을 응시하며, CEO 특유의 여유로운 카리스마가 느껴진다.',
-  '정치':'포멀한 감색 또는 차콜 정장. 국기 배지를 가슴에 달고, 연설하듯 한 손을 앞으로 내밀거나 팔짱을 끼고 있다. 진중하면서도 대중을 이끄는 리더의 면모.',
-  '스포츠':'운동복이나 트레이닝 웨어 차림. 근육질 체형이 드러나는 핏. 어깨에 수건을 걸치거나 스포츠 장비를 손에 들고 있다. 땀방울과 함께 역동적인 에너지.',
-  '군인':'밀리터리 전투복 또는 군장 차림. 부츠를 신고, 인식표가 목에 걸려 있다. 경직된 자세와 날카로운 눈빛. 어깨에 무전기나 전투 장비의 실루엣.',
-  '건축':'캐주얼 셔츠에 안전 조끼, 한 손에 도면 롤이나 안전모를 들고 있다. 현장과 사무실을 오가는 실용적 스타일. 배경 없이 건축가의 자신감만 표현.',
-  '창업':'스마트 캐주얼 차림. 후드티에 블레이저를 걸치거나, 슬리브를 걷은 셔츠 차림. 노트북이나 커피컵을 들고 있다. 젊고 도전적인 에너지.',
-  '디자인':'감각적인 캐주얼 차림. 올블랙이나 미니멀한 스타일. 스케치북이나 태블릿 펜을 손에 들고 있다. 예술적이면서 세련된 분위기.',
-  '교육':'단정한 비즈니스 캐주얼. 안경을 쓰거나 책을 옆에 끼고 있다. 온화하면서도 지적인 표정. 교단에 선 사람 특유의 신뢰감.',
-  '기획':'스마트한 비즈니스 캐주얼. 화이트보드 마커나 프레젠테이션 포인터를 들고 있는 듯한 포즈. 분석적이면서 전략적인 눈빛.',
-  '외교':'포멀한 정장에 부드러운 미소. 세련되고 국제적인 분위기. 다국적 회의장에 어울리는 품격 있는 차림.',
-  '의료':'흰 가운(의사 가운) 차림. 목에 청진기를 걸고, 차분하고 신뢰감 있는 표정. 깨끗하고 정돈된 인상.',
-  '마케팅':'트렌디한 비즈니스 캐주얼. 밝은 색 포인트가 있는 스타일. 스마트폰이나 프레젠테이션 자료를 들고, 활기찬 표정.',
-  'IT기획':'캐주얼 차림. 후드티나 심플한 티셔츠에 청바지. 노트북을 앞에 두거나 이어폰을 걸고 있다. 집중력 있는 눈빛.',
-  '컨설팅':'고급 정장 차림. 가죽 서류가방을 들고, 분석적이면서 자신감 넘치는 자세. 전문가다운 품격.',
-  '예술':'자유로운 아티스트 스타일. 물감 묻은 앞치마나 베레모, 붓이나 팔레트를 손에 들고 있다. 몽환적이면서 창의적인 분위기.',
-  '방송':'세미 포멀 차림. 마이크를 잡거나 이어피스를 끼고 있다. 카메라를 의식하는 듯한 환한 표정과 또렷한 이목구비 강조.',
-  '연예':'화려하면서 개성 있는 스타일. 무대의상이나 포인트 있는 패션. 스포트라이트를 받는 듯한 강한 존재감.',
-  '뷰티':'트렌디하고 세련된 차림. 메이크업 도구나 브러시를 손에 들고 있다. 피부가 빛나고 스타일리시한 분위기.',
-  '강사':'비즈니스 캐주얼에 마이크 핀. 프레젠테이션 중인 듯한 제스처. 열정적이면서 전달력 있는 표정.',
-  '연구':'연구복이나 흰 가운 차림. 안경을 쓰고, 시험관이나 논문 자료를 손에 들고 있다. 탐구적이고 집중된 눈빛.',
-  '종교':'수행자 느낌의 소박한 의상. 묵주나 경전을 들고 있다. 차분하고 깊은 내면이 느껴지는 표정.',
-  '전략기획':'스마트한 정장. 분석 보고서나 차트를 손에 들고, 냉철하면서 전략적인 시선.',
-  '작가':'편안한 캐주얼 차림. 안경을 쓰고 만년필이나 노트를 들고 있다. 생각에 잠긴 듯한 깊은 눈빛.',
-  '상담':'따뜻한 톤의 니트나 카디건 차림. 온화한 미소와 경청하는 자세. 안정감과 공감 능력이 느껴지는 분위기.',
-  '간호':'간호복(스크럽) 차림. 목에 청진기나 이름표를 달고 있다. 부드럽지만 단단한 인상.',
-  '심리':'지적이면서 따뜻한 비즈니스 캐주얼. 노트와 펜을 들고, 상대를 깊이 관찰하는 듯한 시선.',
-  '행정':'깔끔한 정장이나 공무원 유니폼. 서류를 정리하는 듯한 포즈. 성실하고 체계적인 인상.',
-  '부동산':'비즈니스 캐주얼 정장. 서류와 열쇠를 손에 들고, 자신감 있는 영업 스마일.',
-  '금융':'고급 정장과 커프스 버튼. 주식 차트나 재무 자료를 보는 듯한 날카로운 눈빛. 월가 트레이더 느낌.',
-  '토목':'작업복이나 안전 조끼에 안전모. 현장 감독 느낌의 듬직한 자세.',
-  '요리':'셰프 복장. 흰 이중여밈 재킷에 토크(셰프 모자). 칼이나 프라이팬을 손에 들고, 장인의 진지한 표정.',
-  '복지':'따뜻한 캐주얼 차림. 이름표를 달고, 도움의 손길을 내미는 듯한 온화한 제스처.',
-  '관리':'단정한 비즈니스 차림. 클립보드나 태블릿을 들고, 체계적이고 꼼꼼한 인상.',
-  '회계':'정장 차림에 안경. 계산기나 장부를 앞에 두고, 숫자에 집중하는 꼼꼼한 눈빛.',
-  '약사':'흰 가운에 약 봉투나 처방전을 들고 있다. 신뢰감 있고 정확한 인상.',
-  '유통':'캐주얼 비즈니스 차림. 태블릿으로 재고를 확인하는 듯한 실용적 포즈.',
-  '영양사':'깔끔한 유니폼이나 앞치마. 식단표나 건강 음식을 앞에 두고 밝은 표정.',
-  '사무직':'오피스 캐주얼. 데스크에서 일하는 듯한 자연스러운 포즈. 깔끔하고 정돈된 인상.',
-  '검사':'검정 법복이나 포멀 정장. 법전을 손에 들고, 날카롭고 정의로운 눈빛.',
-  '경찰':'경찰 유니폼이나 수사관 정장. 배지를 달고, 정의감 넘치는 단호한 표정.',
-  '운동선수':'스포츠 유니폼이나 트레이닝복. 탄탄한 체격과 역동적인 포즈. 승부사의 눈빛.',
-  '보석':'고급스러운 차림. 루페(확대경)나 보석을 손에 들고, 정밀하게 관찰하는 장인의 눈.',
-  '감정사':'클래식한 정장에 돋보기. 예리하면서 학구적인 분위기.',
-  '법조':'법복이나 포멀 정장. 법전이나 서류를 손에 들고, 논리적이고 권위 있는 인상.',
-  '미용':'트렌디한 스타일. 가위나 드라이어를 손에 들고, 감각적이고 세련된 분위기.',
-  '의류':'패셔너블한 차림. 재단 도구나 원단 샘플을 들고 있다. 패션 디자이너의 창의적 에너지.',
-  '럭셔리':'최고급 맞춤 정장이나 드레스. 브랜드의 품격이 느껴지는 세련된 차림.',
-  '무역':'비즈니스 정장에 여행 가방이나 세계지도 이미지. 국제적이고 활동적인 분위기.',
-  '탐험':'아웃도어 장비 차림. 배낭이나 나침반을 들고, 모험가의 호기심 넘치는 눈빛.',
-  '여행':'캐주얼한 여행복. 배낭이나 카메라를 들고, 자유롭고 개방적인 분위기.',
-  '철학':'수수한 학자풍 차림. 두꺼운 책을 옆에 끼고, 깊은 사색에 잠긴 표정.',
-  '무속':'전통적이면서 신비로운 분위기의 의상. 부적이나 방울 등의 소품. 영적인 분위기.',
-  '음악':'악기를 들거나 이어폰을 끼고 있는 뮤지션 스타일. 리듬감 있는 자유로운 차림.',
-  '플로리스트':'앞치마 차림에 꽃다발이나 가위를 손에 들고 있다. 자연스럽고 화사한 분위기.',
-  '인테리어':'스마트 캐주얼에 색상 팔레트나 도면을 들고 있다. 공간 감각이 느껴지는 세련된 인상.',
-  '이벤트':'활기찬 비즈니스 캐주얼. 헤드셋을 끼거나 무전기를 들고, 현장을 지휘하는 듯한 에너지.',
-  'SNS':'트렌디한 스트릿 패션. 스마트폰이나 링라이트를 들고, 셀피를 찍는 듯한 자신감 넘치는 포즈.',
-  'IT':'캐주얼 차림. 노트북 앞에 앉거나 코드가 보이는 모니터 옆에 서 있다. 집중력 있는 테크 분위기.',
-  '건설':'작업복에 안전모와 장갑. 현장 감독의 듬직하고 강인한 인상.',
-  '세일즈':'깔끔한 캐주얼 정장. 명함이나 제품 샘플을 들고, 친근하면서 설득력 있는 미소.',
-  '프리랜서':'자유로운 캐주얼 스타일. 카페에서 작업하는 듯한 편안하면서 창의적인 분위기.',
-  '자영업':'편안하면서 실용적인 차림. 자기 가게를 운영하는 사장님 느낌. 자부심 있는 표정.',
-  '투자':'고급 정장에 시계와 커프스. 모니터 차트를 분석하는 듯한 날카로운 눈빛.',
-  '동업':'비즈니스 캐주얼. 파트너와 대화하듯 한 손을 내밀거나 악수 포즈.',
-  '공무원':'깔끔한 정장이나 유니폼. 서류를 들고 성실하게 업무에 임하는 인상.',
-  '교사':'단정한 비즈니스 캐주얼에 분필이나 책을 들고 있다. 따뜻하면서 지적인 인상.',
-  '교수':'학자풍 정장이나 트위드 재킷. 안경과 두꺼운 논문. 권위 있으면서 사색적인 분위기.',
-  '의사':'흰 가운과 청진기. 차분하고 전문적인 인상. 생명을 다루는 사람의 진중한 눈빛.',
-  '변호사':'포멀 정장에 법전. 법정에서 변론하듯 당당한 제스처와 논리적인 눈빛.'
-};
 
 // ================================================================
 // 일주+성별 기반 직업 리스트 생성 (최대 10개)
@@ -184,9 +100,10 @@ function getJobList(il, g) {
   // 1) 천간×성별 직업방향 (시트10)
   const chJobs = (gt['직업방향'] || '').split(/[,，]/).map(s => s.trim()).filter(Boolean);
 
-  // 2) 일지십성 직업방향
+  // 2) 일지십성 직업방향 (시트6 → JSON sipsung_jobs)
   const ss = iu['일지십성'] || '';
-  const ssJobs = (SS_JOB[ss] || '').split(/[,，]/).map(s => s.trim()).filter(Boolean);
+  const ssJobStr = (DB.sipsung_jobs || {})[ss] || '';
+  const ssJobs = ssJobStr.split(/[,，]/).map(s => s.trim()).filter(Boolean);
 
   // 중복 제거하면서 순서 유지 (천간 직업 우선)
   const seen = new Set();
@@ -373,10 +290,10 @@ function genWebAI(il, g, w, job) {
   }
 
   // ─── 직업·의상·스타일 ───
-  if (job && job !== '기타' && JOB_PROMPT[job]) {
+  if (job && job !== '기타' && (DB.job_visual||{})[job]) {
     t += `\n■ 직업·의상\n`;
     t += `【직업】${job}\n`;
-    t += `【직업 비주얼】\n${JOB_PROMPT[job]}\n`;
+    t += `【직업 비주얼】\n${DB.job_visual[job].desc}\n`;
     t += `※ 위 직업 비주얼을 최우선으로 반영하되, 아래 오행 기반 색감·소재를 의상에 은은히 녹여주세요.\n`;
     // 오행 색감 보조로만
     const top = (dnaG['E2_상의'] || dnaC['E2_상의'] || '').trim();
@@ -470,10 +387,10 @@ function genSD(il, g, w, job) {
     `single ${ge} character`
   ];
 
-  // 직업 키워드 (기타 제외)
+  // 직업 키워드 (기타 제외) — JSON에서 읽기
   if (job && job !== '기타') {
-    const JOB_EN = {경영:'CEO business suit',정치:'politician formal suit',스포츠:'athlete sportswear',군인:'military uniform soldier',건축:'architect safety vest blueprint',창업:'startup casual blazer',디자인:'designer all black minimal',교육:'teacher smart casual glasses',기획:'planner business casual',외교:'diplomat formal elegant',의료:'doctor white coat stethoscope',마케팅:'marketer trendy business',IT기획:'tech planner hoodie laptop','IT':'tech developer casual',컨설팅:'consultant luxury suit briefcase',예술:'artist paint-stained apron beret',방송:'broadcaster microphone',연예:'entertainer flashy stage outfit',뷰티:'beauty artist stylish makeup tools',강사:'lecturer mic pin presentation',연구:'researcher lab coat glasses',종교:'monk spiritual robe',전략기획:'strategist sharp suit',작가:'writer glasses notebook pen',상담:'counselor warm cardigan kind smile',간호:'nurse scrubs stethoscope',심리:'psychologist intellectual warm',행정:'administrator formal organized',부동산:'realtor business suit keys',금융:'finance trader sharp suit',토목:'civil engineer hard hat work vest',요리:'chef white double-breasted jacket toque',복지:'social worker warm casual nametag',관리:'manager clipboard organized',회계:'accountant glasses calculator',약사:'pharmacist white coat',유통:'distribution tablet inventory',영양사:'nutritionist apron healthy food',사무직:'office worker business casual desk',검사:'prosecutor black robe law book',경찰:'police uniform badge',운동선수:'athlete sports uniform muscular',보석:'jeweler loupe gemstone elegant',감정사:'appraiser magnifying glass classic suit',법조:'lawyer formal suit law book',미용:'hairstylist scissors trendy',의류:'fashion designer fabric scissors',럭셔리:'luxury premium tailored suit',무역:'trade business passport world map',탐험:'explorer outdoor gear backpack compass',여행:'traveler casual backpack camera',철학:'philosopher book deep thought',무속:'shaman spiritual accessories mystical',음악:'musician instrument headphones',플로리스트:'florist apron flower bouquet',인테리어:'interior designer color palette blueprint',이벤트:'event planner headset energetic',SNS:'influencer smartphone ring light selfie',건설:'construction worker hard hat gloves',세일즈:'salesperson business card friendly smile',프리랜서:'freelancer casual creative cafe laptop',자영업:'shop owner practical confident',투자:'investor luxury watch chart analysis',동업:'business partner handshake',공무원:'civil servant neat uniform documents',교사:'teacher chalk book warm intellectual',교수:'professor tweed jacket thick papers',의사:'doctor white coat stethoscope serious',변호사:'lawyer formal suit court gesture'};
-    parts.push(JOB_EN[job] || job);
+    const jv = (DB.job_visual||{})[job];
+    parts.push(jv && jv.sd ? jv.sd : job);
   }
 
   const ohStyles = {
