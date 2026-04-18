@@ -134,6 +134,10 @@ async function init() {
     if (!res.ok) throw new Error('파일 없음');
     DB = await res.json();
     console.log('DB 로드 완료:', Object.keys(DB.dna).length, '일주 DNA');
+    console.log('DB 키:', Object.keys(DB));
+    console.log('sipsung_jobs:', DB.sipsung_jobs ? Object.keys(DB.sipsung_jobs).length + '개 십성' : '❌ 없음!');
+    console.log('job_visual:', DB.job_visual ? Object.keys(DB.job_visual).length + '개 직업' : '❌ 없음!');
+    console.log('甲_남 직업방향:', (DB.gender_traits?.['甲_남']?.['직업방향']||'없음').substring(0,60));
     renderApp();
   } catch(e) {
     document.getElementById('app').innerHTML = `
@@ -535,7 +539,7 @@ function rPanel() {
 
   // 직업 선택
   const jobs = getJobList(il, g);
-  h += `<div style="margin-bottom:10px"><div class="wlabel">💼 직업 선택 (선택)</div>`;
+  h += `<div style="margin-bottom:10px"><div class="wlabel">💼 직업 선택 (선택) <span style="color:#555;font-weight:400">${jobs.length}개</span></div>`;
   h += `<div class="jg">`;
   const noJob = !S.job;
   h += `<button class="jbtn${noJob?' jsel':''}" onclick="S.job=null;rAll()">제외</button>`;
