@@ -105,13 +105,28 @@ function getJobList(il, g) {
   const ssJobStr = (DB.sipsung_jobs || {})[ss] || '';
   const ssJobs = ssJobStr.split(/[,，]/).map(s => s.trim()).filter(Boolean);
 
-  // 중복 제거하면서 순서 유지 (천간 직업 우선)
+  // 3) 보충풀: 다른 십성 직업 전부 (부족 시 사용)
+  const allSsJobs = [];
+  for (const k in (DB.sipsung_jobs || {})) {
+    if (k !== ss) {
+      (DB.sipsung_jobs[k] || '').split(/[,，]/).forEach(j => {
+        const t = j.trim();
+        if (t) allSsJobs.push(t);
+      });
+    }
+  }
+
+  // 중복 제거하면서 순서 유지 (천간 우선 → 일지십성 → 기타십성)
   const seen = new Set();
   const result = [];
-  for (const j of [...chJobs, ...ssJobs]) {
-    if (!seen.has(j)) { seen.add(j); result.push(j); }
+  for (const j of [...chJobs, ...ssJobs, ...allSsJobs]) {
+    // job_visual에 있는 직업만 포함 (프롬프트 매핑 보장)
+    if (!seen.has(j) && result.length < 10) {
+      seen.add(j);
+      result.push(j);
+    }
   }
-  return result.slice(0, 10);
+  return result;
 }
 
 async function init() {
