@@ -1,0 +1,29 @@
+name: Excel to JSON 자동 변환
+
+on:
+  push:
+    paths:
+      - '**.xlsx'
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python 설치
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 라이브러리 설치
+        run: pip install openpyxl
+
+      - name: 변환 실행
+        run: python excel_to_json.py
+
+      - name: JSON 자동 커밋
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "자동 변환: xlsx → saju_db.json"
+          file_pattern: saju_db.json
