@@ -13,8 +13,9 @@ GitHub Actions 자동화용. DB 수정 후 재변환.
 동작:
   1. 엑셀의 각 시트를 파싱하여 JSON 구조로 변환
   2. 시트18 기반으로 시트19(일주별 직업군 매칭)를 자동 재생성
-     → 시트18 편집만 하면 시트19는 매 실행마다 동기화됨
-  3. saju_db.json 하나의 파일로 통합 출력
+  3. 시트18 + 시트17 기반으로 시트20(월지별 직업군 매칭)을 자동 생성
+     → 시트18 편집만 하면 시트19·20은 매 실행마다 동기화됨
+  4. saju_db.json 하나의 파일로 통합 출력
 
 의존성:
   pip install pandas openpyxl
@@ -33,8 +34,16 @@ JSON 구조:
     "job_categories_100": [...],    # 시트18 — 100 직업군(분리 태그 포함)
     "job_exclude_option": {...},    # 시트18 JC000 행
     "ilju_to_jobs": {...},          # 시트19 자동 재생성 — 일주 역인덱스
+    "branch_to_jobs": {...},        # 시트20 자동 재생성 — 월지 역인덱스
     "meta": {...}                   # 빌드 메타데이터
   }
+
+병합 가이드 (index.html 사용법):
+  일주 A × 월지 B 선택 시:
+    primary   = ilju_to_jobs[A] ∩ branch_to_jobs[B]   # 강력 추천
+    by_ilju   = ilju_to_jobs[A] − branch_to_jobs[B]   # 일주 기반
+    by_branch = branch_to_jobs[B] − ilju_to_jobs[A]   # 월지 기반 (신규 확장)
+    union     = ilju_to_jobs[A] ∪ branch_to_jobs[B]   # 전체 선택 가능
 """
 import os
 import sys
@@ -406,6 +415,199 @@ def refresh_sheet19(xlsx, jobs):
 
 
 # ─────────────────────────────────────────────────────────────
+# 월지 ↔ 직업군 매칭 로직 (시트20 자동 생성용)
+# ─────────────────────────────────────────────────────────────
+# 월지별 (오행 / 본기 천간 / 계절 키워드)
+BRANCH_META = {
+    '寅': {'오행': '木', '본기': '甲', '계절': ['초봄', '활동', '개척', '생기']},
+    '卯': {'오행': '木', '본기': '乙', '계절': ['중봄', '섬세', '미', '도화', '창의']},
+    '辰': {'오행': '土', '본기': '戊', '계절': ['늦봄', '저장', '수고', '전략']},
+    '巳': {'오행': '火', '본기': '丙', '계절': ['초여름', '추진', '재성', '확장']},
+    '午': {'오행': '火', '본기': '丁', '계절': ['중여름', '스타', '카리스마', '양인', '화려']},
+    '未': {'오행': '土', '본기': '己', '계절': ['늦여름', '화고', '온화', '결실']},
+    '申': {'오행': '金', '본기': '庚', '계절': ['초가을', '냉철', '결단', '정의', '기술']},
+    '酉': {'오행': '金', '본기': '辛', '계절': ['중가을', '정교', '완성', '미', '도화']},
+    '戌': {'오행': '土', '본기': '戊', '계절': ['늦가을', '화고', '지혜', '신비']},
+    '亥': {'오행': '水', '본기': '壬', '계절': ['초겨울', '지혜', '학문', '내면']},
+    '子': {'오행': '水', '본기': '癸', '계절': ['중겨울', '양인', '지혜극치', '집중']},
+    '丑': {'오행': '土', '본기': '己', '계절': ['늦겨울', '금고', '인내', '축적']},
+}
+
+_STEM_OHENG = {
+    '甲': '木', '乙': '木', '丙': '火', '丁': '火',
+    '戊': '土', '己': '土', '庚': '金', '辛': '金',
+    '壬': '水', '癸': '水',
+}
+
+# 월지별 특수격 가중 (괴강·양인·건록·도화 등)
+_BRANCH_SPECIAL = {
+    '午': ['양인'], '子': ['양인'],
+    '寅': ['건록'], '卯': ['건록', '도화'],
+    '巳': ['건록'], '申': ['건록'],
+    '酉': ['건록', '도화'], '亥': ['건록'],
+    '辰': ['괴강'], '戌': ['괴강'],
+}
+
+
+def _score_branch_job(branch, job):
+    """
+    월지와 직업군의 매칭 점수 계산.
+    신호 가중치:
+      1. 월지 오행 ∈ 직업군 오행 태그 → +2
+      2. 본기 천간 오행이 직업군 오행에 포함(주오행과 다를 때) → +1
+      3. 월지 특수격 ∈ 직업군 특수격 태그 → +1
+      4. 계절 키워드 ∈ 직업군 키워드·기질 → +1
+    """
+    if branch not in BRANCH_META:
+        return 0
+    meta = BRANCH_META[branch]
+    score = 0
+
+    oheng_tag = job.get('oheng') or ''
+    if meta['오행'] in oheng_tag:
+        score += 2
+
+    bonki_oheng = _STEM_OHENG.get(meta['본기'], '')
+    if bonki_oheng and bonki_oheng != meta['오행'] and bonki_oheng in oheng_tag:
+        score += 1
+
+    teuk = job.get('teukgyeok') or ''
+    if teuk and teuk != '—':
+        for s in _BRANCH_SPECIAL.get(branch, []):
+            if s in teuk:
+                score += 1
+                break
+
+    job_tokens = (job.get('keywords') or []) + (job.get('gijil') or '').split('·')
+    joined = ' '.join(job_tokens)
+    for season_kw in meta['계절']:
+        if season_kw in joined:
+            score += 1
+            break
+
+    return score
+
+
+def build_branch_to_jobs(jobs, threshold=2):
+    """
+    12월지 각각에 대해 매칭 직업군 코드 리스트(점수 내림차순) 반환.
+    반환: {'寅': ['JC007', 'JC008', ...], '卯': [...], ..., '丑': [...]}
+    """
+    result = {}
+    for branch in '寅卯辰巳午未申酉戌亥子丑':
+        scored = [(_score_branch_job(branch, j), j['id']) for j in jobs]
+        scored = [(s, code) for s, code in scored if s >= threshold]
+        scored.sort(key=lambda x: (-x[0], x[1]))
+        result[branch] = [code for _, code in scored]
+    return result
+
+
+# ─────────────────────────────────────────────────────────────
+# 시트20 자동 생성 (월지별 매칭 직업군)
+# ─────────────────────────────────────────────────────────────
+def refresh_sheet20(xlsx, branch_to_jobs):
+    """
+    시트20_월지별직업군매칭 시트를 자동 생성/갱신.
+    시트19와 동일한 구조: 번호 / 월지 / 매칭 수 / 매칭 코드.
+    """
+    try:
+        wb = openpyxl.load_workbook(xlsx)
+    except Exception as e:
+        print(f'  WARN: 엑셀 로드 실패 ({e}). 시트20 스킵.')
+        return
+
+    # 시트 없으면 새로 생성 (+ 간단한 서식)
+    from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
+    SHEET_NAME = '시트20_월지별직업군매칭'
+
+    if SHEET_NAME in wb.sheetnames:
+        del wb[SHEET_NAME]
+    ws = wb.create_sheet(SHEET_NAME)
+
+    thin = Border(
+        left=Side(style='thin', color='CCCCCC'),
+        right=Side(style='thin', color='CCCCCC'),
+        top=Side(style='thin', color='CCCCCC'),
+        bottom=Side(style='thin', color='CCCCCC'),
+    )
+    title_fill = PatternFill(start_color='1F3864', end_color='1F3864', fill_type='solid')
+    header_fill = PatternFill(start_color='2E5C8A', end_color='2E5C8A', fill_type='solid')
+
+    # 대제목
+    ws.merge_cells('A1:D1')
+    ws['A1'] = '━━━ 12월지 × 매칭 직업군 코드 (시트18 기반 자동 생성) ━━━'
+    ws['A1'].font = Font(bold=True, color='FFFFFF', size=13)
+    ws['A1'].fill = title_fill
+    ws['A1'].alignment = Alignment(vertical='center', horizontal='center')
+    ws.row_dimensions[1].height = 34
+
+    # 안내문
+    ws.merge_cells('A2:D2')
+    ws['A2'] = ('※ 이 시트는 excel_to_json.py 실행 시 시트18의 오행/십성/특수격/기질 태그와 '
+                '시트17의 월지 오행·계절·본기장간을 참조하여 자동 생성됩니다. 월지 편집 없이 '
+                '시트18만 수정하면 이 시트와 saju_db.json이 함께 갱신됩니다.')
+    ws['A2'].font = Font(italic=True, size=10, color='555555')
+    ws['A2'].fill = PatternFill(start_color='F5F5E9', end_color='F5F5E9', fill_type='solid')
+    ws['A2'].alignment = Alignment(vertical='center', horizontal='left', wrap_text=True)
+    ws.row_dimensions[2].height = 36
+
+    # 헤더
+    headers = ['번호', '월지', '매칭 직업군 수', '매칭 직업군 코드']
+    for c, h in enumerate(headers, 1):
+        cell_ = ws.cell(row=3, column=c)
+        cell_.value = h
+        cell_.font = Font(bold=True, color='FFFFFF', size=11)
+        cell_.fill = header_fill
+        cell_.alignment = Alignment(vertical='center', horizontal='center')
+        cell_.border = thin
+    ws.row_dimensions[3].height = 34
+
+    # 월지별 오행 배경색
+    BRANCH_FILL = {
+        '寅':'E2EFDA', '卯':'C6E0B4',   # 木
+        '巳':'FCE4D6', '午':'F8CBAD',   # 火
+        '辰':'FFF2CC', '未':'FFE699', '戌':'FFEFB0', '丑':'FBE5C4',  # 土
+        '申':'EDEDED', '酉':'D9D9D9',   # 金
+        '亥':'DEEBF7', '子':'BDD7EE',   # 水
+    }
+
+    # 12월지 (寅卯辰...丑)
+    order = list('寅卯辰巳午未申酉戌亥子丑')
+    for idx, br in enumerate(order):
+        r = 4 + idx
+        codes = branch_to_jobs.get(br, [])
+        ws.cell(row=r, column=1).value = idx + 1
+        ws.cell(row=r, column=2).value = br
+        ws.cell(row=r, column=3).value = len(codes)
+        ws.cell(row=r, column=4).value = ', '.join(codes) if codes else ''
+
+        bg = PatternFill(start_color=BRANCH_FILL.get(br, 'FFFFFF'),
+                         end_color=BRANCH_FILL.get(br, 'FFFFFF'), fill_type='solid')
+        for c in range(1, 5):
+            cell_ = ws.cell(row=r, column=c)
+            cell_.fill = bg
+            cell_.border = thin
+            if c in (1, 2, 3):
+                cell_.alignment = Alignment(vertical='center', horizontal='center', wrap_text=True)
+            else:
+                cell_.alignment = Alignment(vertical='center', horizontal='left', wrap_text=True)
+            if c == 2:
+                cell_.font = Font(bold=True, size=12)
+        ws.row_dimensions[r].height = 72
+
+    # 열 너비
+    for col, w in {'A': 6, 'B': 10, 'C': 14, 'D': 110}.items():
+        ws.column_dimensions[col].width = w
+
+    ws.freeze_panes = 'A4'
+
+    try:
+        wb.save(xlsx)
+    except Exception as e:
+        print(f'  WARN: 시트20 엑셀 쓰기 실패 ({e}). JSON은 정상 생성됨.')
+
+
+# ─────────────────────────────────────────────────────────────
 # 메인
 # ─────────────────────────────────────────────────────────────
 def main(xlsx=DEFAULT_XLSX, json_out=DEFAULT_JSON):
@@ -419,6 +621,8 @@ def main(xlsx=DEFAULT_XLSX, json_out=DEFAULT_JSON):
     month, harmony = extract_month_correction(xlsx)
     jobs_100, jc000 = extract_jobs_100(xlsx)
     ilju_to_jobs = refresh_sheet19(xlsx, jobs_100)
+    branch_to_jobs = build_branch_to_jobs(jobs_100)
+    refresh_sheet20(xlsx, branch_to_jobs)
 
     result = {
         'dna':                 extract_dna(xlsx),
@@ -433,8 +637,9 @@ def main(xlsx=DEFAULT_XLSX, json_out=DEFAULT_JSON):
         'job_categories_100':  jobs_100,
         'job_exclude_option':  jc000,
         'ilju_to_jobs':        ilju_to_jobs,
+        'branch_to_jobs':      branch_to_jobs,
         'meta': {
-            'schema_version': '2.0',
+            'schema_version': '2.1',
             'generated_at':   datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'source':         os.path.basename(xlsx),
         },
@@ -456,6 +661,7 @@ def main(xlsx=DEFAULT_XLSX, json_out=DEFAULT_JSON):
     print(f'  Harmony:       {len(result["branch_harmony"])}')
     print(f'  Jobs100:       {len(result["job_categories_100"])}')
     print(f'  IljuToJobs:    {len(result["ilju_to_jobs"])} iljus indexed')
+    print(f'  BranchToJobs:  {len(result["branch_to_jobs"])} branches indexed')
 
 
 if __name__ == '__main__':
