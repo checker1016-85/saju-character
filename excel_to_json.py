@@ -221,6 +221,35 @@ def extract_job_visual(xlsx):
 # 시트15 — 60일주 신체 퍼센트 매트릭스
 # ─────────────────────────────────────────────────────────────
 # 23개 퍼센트 컬럼 (C~Y)을 7개 카테고리로 묶음
+
+# ─────────────────────────────────────────────────────────────
+# 드롭다운 카테고리 (22개) — UI에서 100개 직업군을 그룹핑
+# ─────────────────────────────────────────────────────────────
+JOB_DROPDOWN_DEF = [
+    {'id':'D01','name':'정치·행정·외교','icon':'🏛️','jobs':['JC001','JC002','JC003','JC004','JC010']},
+    {'id':'D02','name':'경영·사업·창업','icon':'💼','jobs':['JC005','JC006','JC007','JC008','JC009']},
+    {'id':'D03','name':'법조·법학','icon':'⚖️','jobs':['JC011','JC012','JC013','JC014']},
+    {'id':'D04','name':'군·경찰·공안','icon':'🛡️','jobs':['JC015','JC016','JC017','JC018','JC019','JC020']},
+    {'id':'D05','name':'투자·증권·트레이딩','icon':'📈','jobs':['JC021','JC022','JC023','JC025']},
+    {'id':'D06','name':'은행·회계·재무·보험','icon':'🏦','jobs':['JC024','JC026','JC027','JC028','JC029']},
+    {'id':'D07','name':'부동산·건설','icon':'🏗️','jobs':['JC031','JC032','JC033']},
+    {'id':'D08','name':'무역·유통·커머스','icon':'📦','jobs':['JC034','JC035','JC036','JC037','JC038']},
+    {'id':'D09','name':'의료(진료·상담)','icon':'🩺','jobs':['JC039','JC041','JC042','JC043','JC046','JC047']},
+    {'id':'D10','name':'의료(수술·시술)·약사·수의','icon':'💉','jobs':['JC040','JC044','JC045','JC048','JC049','JC050']},
+    {'id':'D11','name':'대학·연구·과학','icon':'🔬','jobs':['JC051','JC052','JC055','JC056','JC057']},
+    {'id':'D12','name':'교육·강사·번역','icon':'📚','jobs':['JC053','JC054','JC058','JC059','JC060']},
+    {'id':'D13','name':'가수·뮤지션','icon':'🎤','jobs':['JC061','JC062','JC063','JC064','JC065']},
+    {'id':'D14','name':'배우·무대·코미디','icon':'🎭','jobs':['JC066','JC067','JC068','JC069']},
+    {'id':'D15','name':'방송·MC·언론','icon':'📺','jobs':['JC070','JC071','JC072']},
+    {'id':'D16','name':'크리에이터·SNS','icon':'📱','jobs':['JC073','JC074','JC075','JC076']},
+    {'id':'D17','name':'작가·감독·시나리오','icon':'✍️','jobs':['JC077','JC078','JC079','JC080']},
+    {'id':'D18','name':'순수예술·공예·사진','icon':'🎨','jobs':['JC081','JC082','JC083']},
+    {'id':'D19','name':'디자인·건축','icon':'✏️','jobs':['JC084','JC085','JC086','JC087','JC088']},
+    {'id':'D20','name':'IT·개발·보안·핀테크','icon':'💻','jobs':['JC089','JC090','JC091','JC092','JC093','JC030']},
+    {'id':'D21','name':'하드웨어·로봇·CTO','icon':'🤖','jobs':['JC094','JC095','JC096']},
+    {'id':'D22','name':'요식·서비스·뷰티','icon':'🍳','jobs':['JC097','JC098','JC099','JC100']},
+]
+
 BODY_LAYOUT = [
     ('키',       4,  ['단신', '중간', '장신', '매우장신']),
     ('체형',     4,  ['마른', '보통', '근육', '풍채']),
@@ -502,6 +531,20 @@ def build_branch_to_jobs(jobs, threshold=2):
     return result
 
 
+
+def _build_job_dropdown(jobs):
+    """JOB_DROPDOWN_DEF에 직업명을 채워 반환"""
+    name_map = {j['id']: j['name'] for j in jobs}
+    result = []
+    for d in JOB_DROPDOWN_DEF:
+        result.append({
+            'id': d['id'],
+            'name': d['name'],
+            'icon': d['icon'],
+            'jobs': [{'code': c, 'name': name_map.get(c, c)} for c in d['jobs']]
+        })
+    return result
+
 # ─────────────────────────────────────────────────────────────
 # 시트20 자동 생성 (월지별 매칭 직업군)
 # ─────────────────────────────────────────────────────────────
@@ -638,8 +681,9 @@ def main(xlsx=DEFAULT_XLSX, json_out=DEFAULT_JSON):
         'job_exclude_option':  jc000,
         'ilju_to_jobs':        ilju_to_jobs,
         'branch_to_jobs':      branch_to_jobs,
+        'job_dropdown':        _build_job_dropdown(jobs_100),
         'meta': {
-            'schema_version': '2.1',
+            'schema_version': '2.2',
             'generated_at':   datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'source':         os.path.basename(xlsx),
         },
@@ -662,6 +706,7 @@ def main(xlsx=DEFAULT_XLSX, json_out=DEFAULT_JSON):
     print(f'  Jobs100:       {len(result["job_categories_100"])}')
     print(f'  IljuToJobs:    {len(result["ilju_to_jobs"])} iljus indexed')
     print(f'  BranchToJobs:  {len(result["branch_to_jobs"])} branches indexed')
+    print(f'  JobDropdown:   {len(result["job_dropdown"])} categories')
 
 
 if __name__ == '__main__':
